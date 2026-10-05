@@ -1,0 +1,1118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="assets/app-icon.png">
+<title>Pixel Weather: Retro Sky</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=JetBrains+Mono:wght@500;700&family=Caveat:wght@600&display=swap">
+<style>
+/* Layout: one dark slate stage lit by the scene itself (blurred live backdrop over a scroll-driven day cycle).
+   Pinned chapters scrub scene time; glass cards hold widgets and controls. */
+:root {
+  --bg: #0F172A;           /* app launch background, slate-900 */
+  --bg-deep: #070B19;      /* deep night sky */
+  --fg: #F1F5F9;
+  --muted: #94A3B8;
+  --accent: #A78BFA;       /* app AccentColor, violet-400 */
+  --accent-deep: #4C1D95;
+  --glass: rgba(148, 163, 184, .08);
+  --hair: rgba(255, 255, 255, .14);
+  --pink: #F472B6; --sky: #38BDF8; --emerald: #34D399; --amber: #F59E0B; --live: #10B981;
+  --skyTop: #070B19; --skyBot: #121B2F;
+  --body: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
+  --round: ui-rounded, "SF Pro Rounded", "Nunito", -apple-system, system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --hand: "Noteworthy", "Caveat", "Bradley Hand", cursive;
+  --ease: cubic-bezier(.22, .8, .2, 1);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 400 17px/1.55 var(--body); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+h1, h2, h3 { margin: 0; font-family: var(--round); font-weight: 800; letter-spacing: -0.025em; line-height: 1.05; text-wrap: balance; }
+p { margin: 0; }
+a { color: inherit; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+canvas.px { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+
+/* ambient backdrop: day-cycle sky + blurred live scene + wash */
+.sky { position: fixed; inset: 0; z-index: 0; background: linear-gradient(180deg, var(--skyTop), var(--skyBot)); }
+.backdrop { position: fixed; inset: -12.5%; width: 125%; height: 125%; z-index: 0; filter: blur(46px) saturate(1.35); opacity: 0; transition: opacity .9s var(--ease); pointer-events: none; }
+.backdrop.on { opacity: .62; }
+.wash { position: fixed; inset: 0; z-index: 0; background: linear-gradient(180deg, rgba(0,0,0,.42), rgba(0,0,0,.42) 55%, color-mix(in srgb, var(--bg) 82%, transparent)); pointer-events: none; }
+.wipe { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 80; image-rendering: pixelated; pointer-events: none; }
+.wipe.on { pointer-events: auto; }
+
+/* nav */
+.nav { position: fixed; top: 0; left: 0; right: 0; z-index: 60; padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 0; display: flex; justify-content: center; }
+.nav-inner { width: min(1120px, 100%); display: flex; align-items: center; gap: 16px; padding: 8px 8px 8px 12px; border: 1px solid var(--hair); border-radius: 18px; background: rgba(15, 23, 42, .55); backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4); }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand .icon { width: 30px; height: 30px; border-radius: 8px; overflow: hidden; border: 1px solid var(--hair); }
+.brand .icon canvas { width: 100%; height: 100%; }
+.brand .pt { height: 13px; width: auto; }
+.links { display: flex; gap: 2px; margin-left: auto; }
+.links a { text-decoration: none; font-size: 14px; padding: 7px 12px; border-radius: 11px; color: var(--muted); transition: color .3s var(--ease), background .3s var(--ease); }
+.links a:hover, .links a[aria-current="page"] { color: var(--fg); background: rgba(255,255,255,.08); }
+.links .cta-link { background: var(--accent); color: #1E1035; font-weight: 600; }
+.links .cta-link:hover { background: #C4B5FD; color: #1E1035; }
+@media (max-width: 700px) { .links .opt { display: none; } .brand .pt { display: none; } }
+
+main { position: relative; z-index: 1; }
+.view[hidden] { display: none !important; }
+.wrap { width: min(1120px, 100%); margin: 0 auto; padding-inline: 16px; }
+.label { font: 700 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+.lede { color: #CBD5E1; font-size: clamp(17px, 1.5vw, 20px); max-width: 38ch; }
+.mono { font: 500 12.5px/1.3 var(--mono); letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+.glass { background: var(--glass); border: 1px solid var(--hair); border-radius: 24px; backdrop-filter: blur(20px) saturate(1.3); -webkit-backdrop-filter: blur(20px) saturate(1.3); box-shadow: 0 30px 80px -30px rgba(0,0,0,.7); }
+.scene { position: relative; border-radius: 26px; overflow: hidden; border: 1px solid rgba(255,255,255,.22); box-shadow: 0 40px 100px -20px rgba(0,0,0,.75), 0 0 0 1px rgba(0,0,0,.4); aspect-ratio: 1; max-width: 100%; background: var(--bg-deep); }
+.scene canvas { width: 100%; height: 100%; }
+.scene.tappable { cursor: pointer; }
+.btn { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 600; font-size: 15px; padding: 12px 20px; border-radius: 14px; border: 1px solid var(--hair); background: rgba(255,255,255,.06); cursor: pointer; transition: background .3s var(--ease), transform .3s var(--ease); }
+.btn:hover { background: rgba(255,255,255,.12); transform: translateY(-1px); }
+.btn.primary { background: var(--accent); color: #1E1035; border-color: transparent; }
+.btn.primary:hover { background: #C4B5FD; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* hero */
+.hero { min-height: 100svh; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: clamp(32px, 6vw, 80px); align-items: center; padding-block: 120px 72px; }
+.hero-copy { display: grid; gap: 24px; justify-items: start; }
+.hero .pt-title { width: min(100%, 520px); height: auto; }
+.hero h1 { font-size: clamp(2.6rem, 5.6vw, 4.6rem); }
+.hero-stage { display: grid; gap: 14px; justify-items: center; }
+.hero-stage .scene { width: min(100%, 460px); }
+.scene-cap { display: flex; justify-content: space-between; width: min(100%, 460px); gap: 12px; }
+.stir { font: 600 13px/1 var(--round); color: var(--muted); letter-spacing: .02em; }
+@media (max-width: 820px) { .hero { grid-template-columns: minmax(0, 1fr); padding-block: 104px 56px; } .hero-stage .scene { width: min(100%, 360px); } }
+
+/* statement */
+.statement { padding-block: 18vh; }
+.statement p { font: 800 clamp(2rem, 5.4vw, 4.4rem)/1.08 var(--round); letter-spacing: -0.03em; max-width: 18ch; text-wrap: balance; }
+.statement .w { opacity: .3; display: inline-block; }
+
+/* pinned chapters */
+.chapter { min-height: 100svh; display: flex; align-items: center; padding-block: 96px 48px; overflow: hidden; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(28px, 6vw, 80px); align-items: center; }
+.split > * { min-width: 0; }
+.chapter h2, .sec-head h2 { font-size: clamp(2.2rem, 5vw, 4rem); }
+.copy { display: grid; gap: 20px; align-content: start; }
+.chapter .scene { width: min(100%, 520px); justify-self: center; }
+@media (max-width: 820px) { .split { grid-template-columns: minmax(0, 1fr); } .chapter { padding-block: 88px 32px; } .chapter .scene { width: min(100%, 44svh); } }
+
+.scene-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.scene-list li { display: grid; grid-template-columns: 2.4em 1fr; gap: 8px; align-items: baseline; padding: 6px 0; color: rgba(148,163,184,.55); transition: color .4s var(--ease); font: 700 clamp(15px, 1.4vw, 18px)/1.25 var(--round); }
+.scene-list li .n { font: 500 12px var(--mono); }
+.scene-list li .mood { grid-column: 2; font: 400 15px/1.4 var(--body); color: #CBD5E1; max-height: 0; overflow: hidden; opacity: 0; transition: max-height .5s var(--ease), opacity .5s var(--ease); }
+.scene-list li.on { color: var(--fg); }
+.scene-list li.on .n { color: var(--accent); }
+.scene-list li.on .mood { max-height: 3em; opacity: 1; }
+@media (max-width: 820px) { .scene-list li:not(.on) { display: none; } .scene-list li { font-size: 22px; } }
+.scrub { display: grid; gap: 8px; max-width: 360px; }
+.scrub .bar { height: 3px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+.scrub .bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+
+/* styles */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font: 700 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--hair); background: rgba(255,255,255,.03); border-radius: 999px; padding: 10px 14px; cursor: pointer; transition: all .35s var(--ease); }
+.chip:hover { color: var(--fg); }
+.chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.chip.small { padding: 7px 11px; font-size: 11px; }
+.style-name { font: 800 clamp(1.6rem, 3vw, 2.4rem)/1.1 var(--round); }
+.swatches { display: grid; grid-template-columns: repeat(13, minmax(0, 1fr)); gap: 4px; max-width: 420px; }
+.swatches span { aspect-ratio: 1; border-radius: 4px; border: 1px solid rgba(255,255,255,.1); transition: background .6s var(--ease); }
+.ctl { display: grid; gap: 10px; }
+
+/* sections */
+.sec { padding-block: clamp(80px, 12vh, 140px); }
+.sec-head { display: grid; gap: 16px; margin-bottom: 44px; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+@media (max-width: 820px) { .grid2, .grid3 { grid-template-columns: minmax(0, 1fr); } }
+.card { padding: 18px; display: grid; gap: 14px; align-content: start; min-width: 0; }
+.card .scene { width: 100%; border-radius: 18px; }
+.card h3 { font-size: 20px; letter-spacing: -0.01em; }
+.card p { color: var(--muted); font-size: 15px; }
+.hint { font: 600 13px var(--round); color: var(--accent); }
+
+/* forecast */
+.week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; }
+.day { padding: 12px 12px 14px; display: grid; gap: 10px; justify-items: center; text-align: center; border-radius: 20px; }
+.day .scene { width: 100%; border-radius: 12px; box-shadow: none; }
+.day b { font: 800 16px var(--round); }
+.day.today { border-color: var(--accent); }
+@media (max-width: 820px) { .week { grid-template-columns: repeat(7, minmax(120px, 1fr)); overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x mandatory; } .day { scroll-snap-align: start; } }
+
+/* widgets */
+.widgets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.widgets > * { min-width: 0; }
+.span2 { grid-column: span 2; }
+@media (max-width: 820px) { .widgets { grid-template-columns: minmax(0, 1fr); } .span2 { grid-column: auto; } }
+.wcell { display: grid; gap: 10px; align-content: start; }
+.wcap { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.w-shell { aspect-ratio: 1; border-radius: 28px; padding: 14px 14px 30px; background: linear-gradient(160deg, #6366F1, #3730A3); position: relative; box-shadow: inset 0 2px 0 rgba(255,255,255,.25), 0 30px 60px -25px rgba(0,0,0,.7); max-width: 100%; }
+.w-shell .scene { width: 100%; border-radius: 10px; border: 3px solid #1E1B4B; box-shadow: none; }
+.w-shell .led { position: absolute; left: 18px; bottom: 11px; width: 8px; height: 8px; border-radius: 50%; background: #EF4444; box-shadow: 0 0 8px #EF4444; }
+.w-shell .city { position: absolute; right: 18px; bottom: 8px; font: 700 11px var(--mono); letter-spacing: .14em; color: rgba(255,255,255,.75); }
+.w-timber { border-radius: 28px; padding: 14px; background: linear-gradient(135deg, #B45309, #78350F 55%, #5B2A0C); display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: center; box-shadow: inset 0 2px 0 rgba(255,255,255,.18), 0 30px 60px -25px rgba(0,0,0,.7); }
+.w-timber .scene { width: clamp(120px, 16vw, 168px); border-radius: 14px; box-shadow: inset 0 0 0 2px rgba(0,0,0,.3); }
+.w-timber .t { display: grid; gap: 6px; color: #FEF3C7; }
+.w-timber .t b { font: 800 26px var(--round); }
+.w-timber .t span { font-size: 15px; color: #FDE68A; opacity: .85; }
+.w-polaroid { background: #FAFAF7; border-radius: 6px; padding: 12px 12px 8px; transform: rotate(-2deg); box-shadow: 0 30px 60px -20px rgba(0,0,0,.7); display: grid; gap: 6px; max-width: 280px; justify-self: center; width: 100%; }
+.w-polaroid .scene { width: 100%; border-radius: 2px; border: 0; box-shadow: none; }
+.w-polaroid figcaption { font: 600 22px var(--hand); color: #334155; text-align: center; }
+.w-lock { border-radius: 22px; padding: 12px; display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; background: rgba(255,255,255,.1); }
+.w-lock .scene { width: 72px; border-radius: 12px; filter: grayscale(1) contrast(1.15) brightness(1.15); box-shadow: none; }
+.w-lock b { font: 800 17px var(--round); display: block; }
+.w-lock span { color: #CBD5E1; font-size: 14px; }
+.lockscreen { border-radius: 28px; padding: 22px 18px; display: grid; gap: 14px; justify-items: center; background: linear-gradient(180deg, #1E1B4B, #0F172A); border: 1px solid var(--hair); }
+.lockscreen .time { font: 800 64px/1 var(--round); letter-spacing: -0.02em; }
+.w-standby { border-radius: 28px; padding: 18px; background: #000; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 22px; align-items: center; border: 1px solid #1F2937; }
+.w-standby .clock { width: 100%; height: auto; }
+.w-standby .scene { width: clamp(110px, 16vw, 170px); border-radius: 18px; box-shadow: none; }
+
+/* ambient teaser + privacy */
+.amb-teaser { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: center; padding: clamp(20px, 3vw, 32px); }
+@media (max-width: 820px) { .amb-teaser { grid-template-columns: minmax(0, 1fr); } }
+.privacy .card b { font: 800 19px var(--round); }
+
+/* cta */
+.cta { padding-block: 120px 140px; display: grid; justify-items: center; text-align: center; gap: 22px; }
+.app-icon { width: 128px; aspect-ratio: 1; border-radius: 28px; overflow: hidden; box-shadow: 0 30px 70px -20px rgba(167,139,250,.45), 0 0 0 1px rgba(255,255,255,.18); }
+.app-icon canvas { width: 100%; height: 100%; }
+.cta h2 { font-size: clamp(2.2rem, 5vw, 3.8rem); }
+footer { position: relative; z-index: 1; border-top: 1px solid var(--hair); padding-block: 28px; color: var(--muted); font-size: 13px; }
+footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+/* ambient view */
+.ambient { position: relative; height: 100svh; min-height: 480px; overflow: hidden; }
+.ambient > canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; cursor: pointer; }
+@media (orientation: portrait) { .ambient > canvas { object-fit: cover; } }
+.amb-top { position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + 96px); display: grid; justify-items: center; gap: 10px; padding-inline: 16px; }
+.amb-top canvas { width: min(86vw, 640px); height: auto; filter: drop-shadow(0 4px 0 rgba(0,0,0,.35)); }
+.amb-top .mono { color: rgba(241,245,249,.85); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.amb-bottom { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); display: grid; justify-items: center; gap: 12px; padding-inline: 16px; }
+.amb-bottom .chips { justify-content: center; padding: 8px; border-radius: 22px; }
+.amb-bottom .chip { background: rgba(15,23,42,.35); }
+.amb-bottom .chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.amb-note { font-size: 12px; color: rgba(241,245,249,.7); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+
+/* legal pages */
+.legal { max-width: 780px; padding-block: 140px 96px; display: grid; gap: 36px; }
+.legal-head { display: grid; gap: 14px; }
+.legal h1 { font-size: clamp(2.6rem, 6vw, 4.2rem); }
+.legal section { display: grid; gap: 12px; }
+.legal h2 { font-size: clamp(1.4rem, 2.4vw, 1.75rem); }
+.legal h3 { font: 700 17px/1.3 var(--round); margin: 18px 0 6px; color: var(--fg); }
+.legal section p, .legal section li { color: #CBD5E1; max-width: 68ch; }
+.legal ul { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+.legal a { color: var(--accent); text-underline-offset: 3px; }
+.legal .btn { color: var(--fg); text-decoration: none; }
+.legal-sum { padding: 22px 24px; display: grid; gap: 10px; }
+.legal-sum b { font: 800 18px var(--round); }
+.legal-sum li { color: var(--fg); }
+.legal mark { background: rgba(167,139,250,.18); color: #DDD6FE; border: 1px dashed rgba(167,139,250,.6); border-radius: 6px; padding: 0 5px; }
+.legal-foot { display: flex; gap: 10px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--hair); }
+.foot-links { display: flex; gap: 18px; }
+.foot-links a { color: var(--muted); text-decoration: none; }
+.foot-links a:hover { color: var(--fg); }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="sky" aria-hidden="true"></div>
+<canvas class="backdrop" id="bdA" aria-hidden="true"></canvas>
+<canvas class="backdrop" id="bdB" aria-hidden="true"></canvas>
+<div class="wash" aria-hidden="true"></div>
+<canvas class="wipe" id="wipe" aria-hidden="true"></canvas>
+
+<header class="nav">
+  <nav class="nav-inner" aria-label="Main">
+    <a class="brand" href="#story" data-view="story" aria-label="Pixel Weather home">
+      <span class="icon"><canvas class="px" data-scene="goldenSunset" data-style="neo" data-fps="8" aria-hidden="true"></canvas></span>
+      <canvas class="px pt" data-pixeltext="PIXEL WEATHER" aria-hidden="true"></canvas>
+    </a>
+    <div class="links">
+      <a href="#scenes" data-view="story" data-target="#scenes" class="opt">Scenes</a>
+      <a href="#styles" data-view="story" data-target="#styles" class="opt">Styles</a>
+      <a href="#widgets" data-view="story" data-target="#widgets" class="opt">Widgets</a>
+      <a href="#ambient" data-view="ambient">Ambient</a>
+      <a href="#get" data-view="story" data-target="#get" class="cta-link">Join the beta</a>
+    </div>
+  </nav>
+</header>
+
+<!-- ================= STORY ================= -->
+<main id="view-story" class="view" data-view-id="story">
+
+  <section class="wrap hero" id="top">
+    <div class="hero-copy">
+      <canvas class="px pt-title" data-pixeltext="PIXEL WEATHER" aria-label="Pixel Weather"></canvas>
+      <p class="label">Retro Sky · for iPhone</p>
+      <h1>The sky outside, painted in pixels.</h1>
+      <p class="lede">Pixel Weather turns the live forecast into a tiny animated scene. No numbers, no charts. Just how the weather feels.</p>
+      <div class="row">
+        <a class="btn primary" href="#get" data-view="story" data-target="#get">Join the beta</a>
+        <a class="btn" href="#ambient" data-view="ambient">Try Ambient mode</a>
+      </div>
+    </div>
+    <div class="hero-stage">
+      <div class="scene tappable" id="heroScene" role="button" tabindex="0" aria-label="Live weather scene. Tap to stir the air."><canvas class="px" id="heroCanvas"></canvas></div>
+      <div class="scene-cap"><span class="mono" id="heroName">Sunny Hill</span><span class="mono" id="heroStyle">16-Bit · Live</span></div>
+      <p class="stir">✦ Tap the scene to stir the air ✦</p>
+    </div>
+  </section>
+
+  <section class="wrap statement" aria-label="Why Pixel Weather">
+    <p id="statement">Built for anyone who finds a forecast easier to feel than to read.</p>
+  </section>
+
+  <span id="features"></span>
+  <section class="chapter" id="scenes">
+    <div class="wrap split">
+      <div class="copy">
+        <p class="label">Nine skies</p>
+        <h2>Every forecast has a scene.</h2>
+        <ol class="scene-list" id="sceneList"></ol>
+        <div class="scrub"><div class="bar"><i id="sceneBar"></i></div><span class="mono" id="sceneCount">01 / 09 · scroll to move time</span></div>
+      </div>
+      <div class="scene tappable" id="chScene" role="button" tabindex="0" aria-label="Weather scene, scrubbed by scroll"><canvas class="px" id="chCanvas"></canvas></div>
+    </div>
+  </section>
+
+  <section class="chapter" id="styles">
+    <div class="wrap split">
+      <div class="scene" id="stScene"><canvas class="px" id="stCanvas" aria-label="Scene repainted in the selected console style"></canvas></div>
+      <div class="copy">
+        <p class="label">Seven eras</p>
+        <h2>Same sky. Seven consoles.</h2>
+        <div class="ctl">
+          <p class="style-name" id="styleName">8-Bit NES</p>
+          <p class="lede" id="styleSub"></p>
+          <div class="swatches" id="swatches" aria-label="The style's 13 palette roles"></div>
+        </div>
+        <div class="chips" id="styleChips" role="group" aria-label="Art style"></div>
+        <div class="ctl"><span class="mono">Scene</span><div class="chips" id="stSceneChips" role="group" aria-label="Scene"></div></div>
+        <div class="ctl"><span class="mono">Transition</span><div class="chips" id="trChips" role="group" aria-label="Transition"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="label">Reach in</p>
+        <h2>The scenes notice you.</h2>
+        <p class="lede">Some skies answer a tap. Try it here, just like in the app.</p>
+      </div>
+      <div class="grid2">
+        <article class="glass card"><div class="scene tappable" role="button" tabindex="0" aria-label="Rain on Window. Tap to send ripples."><canvas class="px" data-scene="rainOnWindow" data-style="snes" data-night="1" data-tap="1"></canvas></div><h3>Rain on Window</h3><p class="hint">Tap the glass to send ripples</p></article>
+        <article class="glass card"><div class="scene tappable" role="button" tabindex="0" aria-label="Thunderstorm. Tap to call down lightning."><canvas class="px" data-scene="thunderstorm" data-style="snes" data-night="1" data-tap="1"></canvas></div><h3>Thunderstorm</h3><p class="hint">Tap to call down lightning</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="label">Seven days</p>
+        <h2>The week ahead, shown the same way.</h2>
+        <p class="lede">No highs, no lows, no percentages. Glance at the row and you already know what to wear.</p>
+      </div>
+      <div class="week" id="week"></div>
+      <p class="mono" style="margin-top:14px">Example week</p>
+    </div>
+  </section>
+
+  <section class="sec" id="widgets">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="label">Widgets</p>
+        <h2>Home Screen, Lock Screen and nightstand.</h2>
+        <p class="lede">Pick a frame for every widget. The scene inside keeps moving.</p>
+      </div>
+      <div class="widgets">
+        <div class="wcell">
+          <div class="w-shell"><div class="scene"><canvas class="px" data-scene="sunnyHill" data-style="dmg" data-fps="15"></canvas></div><span class="led"></span><span class="city">ZURICH</span></div>
+          <div class="wcap"><b>Small</b><span class="mono">Game Shell</span></div>
+        </div>
+        <div class="wcell span2">
+          <div class="w-timber"><div class="scene"><canvas class="px" data-scene="rainOnWindow" data-style="snes" data-night="1" data-fps="15"></canvas></div><div class="t"><b>Bergen</b><span>Gentle drops trickling down the cozy glass</span></div></div>
+          <div class="wcap"><b>Medium</b><span class="mono">Timber</span></div>
+        </div>
+        <div class="wcell span2">
+          <div class="w-standby"><canvas class="px clock" id="standbyClock" aria-label="Pixel Clock"></canvas><div class="scene"><canvas class="px" data-scene="autumnWind" data-style="snes" data-phase="goldenHour" data-fps="15"></canvas></div></div>
+          <div class="wcap"><b>StandBy</b><span class="mono">Pixel Clock</span></div>
+        </div>
+        <div class="wcell">
+          <figure class="w-polaroid" style="margin:0"><div class="scene"><canvas class="px" data-scene="starryNight" data-style="gba" data-night="1" data-fps="15"></canvas></div><figcaption>Reykjavik, tonight</figcaption></figure>
+          <div class="wcap"><b>Large</b><span class="mono">Polaroid</span></div>
+        </div>
+        <div class="wcell">
+          <div class="lockscreen"><span class="time" id="lockTime">9:41</span><div class="w-lock"><div class="scene"><canvas class="px" data-scene="driftingClouds" data-style="nordic" data-fps="15"></canvas></div><div><b>London</b><span>Overcast &amp; cloudy</span></div></div></div>
+          <div class="wcap"><b>Lock Screen</b><span class="mono">Pixel Sky</span></div>
+        </div>
+        <div class="wcell span2">
+          <div class="glass amb-teaser">
+            <div class="copy" style="gap:12px"><p class="label">Ambient mode</p><h3 style="font-size:clamp(1.6rem,3vw,2.2rem)">A window for your nightstand.</h3><p class="lede">Prop your phone up and the whole screen becomes the sky over your city, with the time in pixel type.</p></div>
+            <a class="btn primary" href="#ambient" data-view="ambient">Open Ambient mode</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec privacy">
+    <div class="wrap">
+      <div class="sec-head"><p class="label">Privacy</p><h2>Only the sky. Nothing else.</h2></div>
+      <div class="grid3">
+        <div class="glass card"><b>Coarse location</b><p>Your city is enough to paint the sky. Precise location never leaves the phone.</p></div>
+        <div class="glass card"><b>No tracking</b><p>No ads, no analytics, no accounts.</p></div>
+        <div class="glass card"><b>Your own iCloud</b><p>Saved cities and styles sync through your iCloud account and nowhere else.</p></div>
+      </div>
+      <div class="row" style="margin-top:22px;align-items:center;justify-content:space-between"><span class="mono">Weather data from Open-Meteo</span><span class="row"><a class="btn" href="privacy.html">Read the Privacy Policy</a><a class="btn" href="terms.html">Terms &amp; Conditions</a></span></div>
+    </div>
+  </section>
+
+  <section class="wrap cta" id="get">
+    <div class="app-icon"><canvas class="px" data-scene="goldenSunset" data-style="neo" aria-label="Pixel Weather app icon"></canvas></div>
+    <h2>Pixel Weather: Retro Sky</h2>
+    <p class="lede">The sky outside, painted in pixels. Pixel Weather is in beta on TestFlight. Ask for an invite and it usually arrives within a day or two.</p>
+    <div class="row" style="justify-content:center">
+      <a class="btn primary" href="mailto:support.projectz@gmail.com?subject=TestFlight%20access%20for%20Pixel%20Weather&amp;body=Hi%2C%0A%0AI%27d%20like%20to%20try%20the%20Pixel%20Weather%20beta.%20Here%27s%20the%20email%20to%20send%20my%20TestFlight%20invite%20to%3A%0A%0A">Request Beta Access</a>
+      <a class="btn" href="#ambient" data-view="ambient">Try Ambient mode</a>
+    </div>
+  </section>
+
+  <footer><div class="wrap"><span>Pixel Weather: Retro Sky</span><span class="foot-links"><a href="privacy.html">Privacy Policy</a><a href="terms.html">Terms &amp; Conditions</a></span></div></footer>
+</main>
+
+<!-- ================= AMBIENT ================= -->
+<main id="view-ambient" class="view" data-view-id="ambient" hidden>
+  <section class="ambient">
+    <canvas class="px" id="ambCanvas" role="button" tabindex="0" aria-label="Full-screen ambient weather scene. Tap to stir the air."></canvas>
+    <div class="amb-top"><canvas class="px" id="ambText" aria-live="polite"></canvas><span class="mono" id="ambMood"></span></div>
+    <div class="amb-bottom">
+      <div class="chips glass" id="cityChips" role="group" aria-label="City"></div>
+      <div class="row" style="justify-content:center"><a class="btn" href="#story" data-view="story">Back to overview</a></div>
+      <p class="amb-note">Example conditions for each city, local time is real · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/lenis@1.1.13/dist/lenis.min.js"></script>
+<script>
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+/* ==========================================================================
+   Pixel Weather scene engine: a line-for-line port of PixelSceneRenderer.swift,
+   PixelPalette.swift and PixelTransition.swift. 64x64 ARGB buffer, Bayer skies.
+   ========================================================================== */
+const G = 64;
+const ROLE_KEYS = ["skyTop","skyBottom","celestial","celestialGlow","cloudBody","cloudShadow","primaryTerrain","secondaryTerrain","terrainHighlight","accentDetail","weatherParticle","atmosphericGlow","silhouetteTone"];
+const mkPal = a => { const o = {}; ROLE_KEYS.forEach((k, i) => o[k] = a[i] >>> 0); return o; };
+const dmg = [0xFF0F380F, 0xFF306230, 0xFF8BAC0F, 0xFF9BBC0F];
+
+const STYLES = [
+  { key: "nes", name: "8-Bit NES", short: "8-BIT", sub: "Authentic Famicom palette with bold outlines and nostalgic arcade dither",
+    dark: mkPal([0xFF000000,0xFF001888,0xFFFCFC74,0x60FCFC74,0xFF3C5488,0xFF001888,0xFF004010,0xFF001800,0xFF007800,0xFFE45C10,0xFF3CBCFC,0x60FCFCFC,0xFF000000]),
+    light: mkPal([0xFF5C94FC,0xFF94B8FC,0xFFFC9838,0x80FCBCB0,0xFFFCFCFC,0xFFA4A4A4,0xFF00A800,0xFF007800,0xFF58D854,0xFFD82800,0xFF3CBCFC,0x70FCFCFC,0xFF004058]) },
+  { key: "snes", name: "16-Bit SNES", short: "16-BIT", sub: "Super Famicom color depth with lush shading and painterly warmth",
+    dark: mkPal([0xFF0F172A,0xFF1E293B,0xFFFDE68A,0x40FDE68A,0xFF334155,0xFF1E293B,0xFF1B3828,0xFF14291E,0xFF2A5940,0xFFF59E0B,0xFF93C5FD,0x50E0F2FE,0xFF0B141E]),
+    light: mkPal([0xFF60A5FA,0xFFBAE6FD,0xFFFBBF24,0x60FDE047,0xFFFFFFFF,0xFFE2E8F0,0xFF34D399,0xFF059669,0xFF6EE7B7,0xFFF87171,0xFF60A5FA,0x40FFFFFF,0xFF064E3B]) },
+  { key: "dmg", name: "Game Boy", short: "DMG", sub: "Iconic 4-color olive-green dot-matrix LCD handheld",
+    dark: mkPal([dmg[0],dmg[1],dmg[3],dmg[2],dmg[1],dmg[0],dmg[1],dmg[0],dmg[2],dmg[3],dmg[2],dmg[2],dmg[0]]),
+    light: mkPal([dmg[3],dmg[2],dmg[3],dmg[2],dmg[3],dmg[2],dmg[1],dmg[0],dmg[2],dmg[3],dmg[0],dmg[3],dmg[0]]) },
+  { key: "gba", name: "32-Bit GBA", short: "32-BIT", sub: "Vibrant handheld jewel tones and saturated greens",
+    dark: mkPal([0xFF1E1B4B,0xFF312E81,0xFFFDE047,0x50FDE047,0xFF4338CA,0xFF312E81,0xFF064E3B,0xFF022C22,0xFF059669,0xFFFB7185,0xFF818CF8,0x40C7D2FE,0xFF0F172A]),
+    light: mkPal([0xFF38BDF8,0xFF7DD3FC,0xFFF59E0B,0x70FDE68A,0xFFFFFFFF,0xFFE0E7FF,0xFF22C55E,0xFF15803D,0xFF86EFAC,0xFFF43F5E,0xFF0EA5E9,0x60FFFFFF,0xFF14532D]) },
+  { key: "neo", name: "Neo Arcade", short: "ARCADE", sub: "Midnight noir, electric cyan and glowing hot magenta",
+    dark: mkPal([0xFF0B0418,0xFF190D36,0xFFFF007F,0x60FF007F,0xFF2D1657,0xFF130926,0xFF1E103E,0xFF120826,0xFF00F0FF,0xFFFFE600,0xFF00F0FF,0x80FF007F,0xFF080214]) },
+  { key: "pastel", name: "Lo-Fi Pastel", short: "LO-FI", sub: "Cotton candy pastels, lavender skies and peach horizons",
+    dark: mkPal([0xFF2C223B,0xFF4A3B5F,0xFFFFD1DC,0x50FFD1DC,0xFF5D4A77,0xFF352947,0xFF3E4F5E,0xFF26333F,0xFFBEE1E6,0xFFFFF1BD,0xFFC6D8D3,0x40E8D7F1,0xFF1A1324]),
+    light: mkPal([0xFFD8B4E2,0xFFFFD1DC,0xFFFFF3B0,0x60FFF3B0,0xFFFFFFFF,0xFFE8D7F1,0xFF99D5C9,0xFF6CB2A4,0xFFC1EDE2,0xFFFF9AA2,0xFFB5EAEA,0x40FFFFFF,0xFF4A7C72]) },
+  { key: "nordic", name: "Nordic Slate", short: "NORDIC", sub: "Desaturated Scandinavian graphite and cool mist",
+    dark: mkPal([0xFF121418,0xFF1E222A,0xFFE2E8F0,0x30E2E8F0,0xFF2B323D,0xFF181C22,0xFF262E35,0xFF1A2025,0xFF3D4752,0xFFEAB308,0xFF94A3B8,0x30CBD5E1,0xFF0E1114]),
+    light: mkPal([0xFF94A3B8,0xFFCBD5E1,0xFFFEF08A,0x40FEF08A,0xFFF8FAFC,0xFFE2E8F0,0xFF475569,0xFF334155,0xFF64748B,0xFFF97316,0xFF64748B,0x30F1F5F9,0xFF1E293B]) },
+];
+const STYLE = Object.fromEntries(STYLES.map(s => [s.key, s]));
+
+const PHASE_SKY = {
+  deepNight: [0xFF070B19, 0xFF121B2F], dawnTwilight: [0xFF2E1A47, 0xFFB86B77], sunrise: [0xFF3B4371, 0xFFF39060],
+  goldenHour: [0xFF4A6984, 0xFFE08D46], sunset: [0xFF2C1654, 0xFFE65C40], duskTwilight: [0xFF131838, 0xFF532E5B],
+};
+const NIGHT_PHASES = new Set(["deepNight", "duskTwilight"]);
+
+function paletteFor(cfg) {
+  const st = STYLE[cfg.style];
+  const dark = cfg.night || NIGHT_PHASES.has(cfg.phase);
+  const p = Object.assign({}, (dark || !st.light) ? st.dark : st.light);
+  if (cfg.phase && cfg.phase !== "daylight" && cfg.style !== "dmg") { p.skyTop = PHASE_SKY[cfg.phase][0] >>> 0; p.skyBottom = PHASE_SKY[cfg.phase][1] >>> 0; }
+  return p;
+}
+
+const SCENES = [
+  { key: "rainOnWindow",   title: "Rain on Window",   short: "Rain",   cond: "Rain & Drizzle",          mood: "Gentle drops trickling down the cozy glass",          hint: "Tap the glass to send ripples" },
+  { key: "sunnyHill",      title: "Sunny Hill",       short: "Sunny",  cond: "Clear Daylight",          mood: "Rolling emerald slopes and warm sunbeams" },
+  { key: "fogOverLake",    title: "Fog over Lake",    short: "Fog",    cond: "Fog & Mist",              mood: "Quiet mist drifting across tranquil still waters" },
+  { key: "thunderstorm",   title: "Thunderstorm",     short: "Storm",  cond: "Heavy Storm & Lightning", mood: "Brooding thunderheads and flashes in the distance",   hint: "Tap to call down lightning" },
+  { key: "snowyForest",    title: "Snowy Forest",     short: "Snow",   cond: "Snow & Frost",            mood: "Silent snow falling on snow-dusted pine trees" },
+  { key: "driftingClouds", title: "Drifting Clouds",  short: "Clouds", cond: "Overcast & Cloudy",       mood: "Parallax cloud banks gliding across the vast sky" },
+  { key: "starryNight",    title: "Starry Horizon",   short: "Starry", cond: "Clear Night",             mood: "Twinkling starfield and glowing crescent moon" },
+  { key: "autumnWind",     title: "Autumn Wind",      short: "Autumn", cond: "Breezy & Golden",         mood: "Crisp wind carrying vibrant amber leaves" },
+  { key: "goldenSunset",   title: "Golden Sunset",    short: "Sunset", cond: "Twilight & Dusk",         mood: "Warm amber and coral glow sinking below the ridge" },
+];
+const SCENE = Object.fromEntries(SCENES.map(s => [s.key, s]));
+
+const BAYER4 = [0, 10, 2, 8, 5, 15, 7, 13, 1, 11, 3, 9, 4, 14, 6, 12].map(v => v / 16);
+const BAYER8 = [0,32,8,40,2,34,10,42,48,16,56,24,50,18,58,26,12,44,4,36,14,46,6,38,60,28,52,20,62,30,54,22,3,35,11,43,1,33,9,41,51,19,59,27,49,17,57,25,15,47,7,39,13,45,5,37,63,31,55,23,61,29,53,21].map(v => (v + .5) / 64);
+
+function blendC(bg, fg, a) {
+  const inv = 255 - a;
+  const r = ((((fg >>> 16) & 255) * a + ((bg >>> 16) & 255) * inv) / 255) | 0;
+  const g = ((((fg >>> 8) & 255) * a + ((bg >>> 8) & 255) * inv) / 255) | 0;
+  const b = (((fg & 255) * a + (bg & 255) * inv) / 255) | 0;
+  return (0xFF000000 | (r << 16) | (g << 8) | b) >>> 0;
+}
+const I = d => Number.isFinite(d) ? Math.trunc(d) : 0;
+const fm = (a, b) => a % b;
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+const { sin, cos, PI } = Math;
+
+class SceneRenderer {
+  constructor() { this.buf = new Uint32Array(G * G); }
+  px(x, y, c) {
+    if (x < 0 || x >= G || y < 0 || y >= G) return;
+    const a = c >>> 24, i = y * G + x;
+    if (a === 255) this.buf[i] = c; else if (a > 0) this.buf[i] = blendC(this.buf[i], c, a);
+  }
+  rect(x, y, w, h, c) {
+    const xE = Math.min(x + w, G), yE = Math.min(y + h, G), xS = Math.max(x, 0), yS = Math.max(y, 0);
+    if (xS >= xE || yS >= yE) return;
+    for (let py = yS; py < yE; py++) for (let q = xS; q < xE; q++) this.px(q, py, c);
+  }
+  sky(topY, bottomY, top, bottom) {
+    const h = Math.max(bottomY - topY, 1);
+    for (let y = topY; y < bottomY; y++) { const r = (y - topY) / h; for (let x = 0; x < G; x++) this.px(x, y, r + (BAYER4[(y % 4) * 4 + (x % 4)] - .5) * .35 > .5 ? bottom : top); }
+  }
+  cloud(cx, cy, w, h, body, shadow, hi = 0) {
+    const w2 = Math.trunc(w / 2), h2 = Math.trunc(h / 2);
+    this.rect(cx - w2 + 2, cy + 1, w - 4, h2, shadow);
+    this.rect(cx - w2 + 4, cy + h2, w - 8, 2, shadow);
+    this.rect(cx - w2, cy - 2, w, h2 + 2, body);
+    this.rect(cx - w2 + 3, cy - h2, w - 6, h2, body);
+    this.rect(cx - w2 + 6, cy - h2 - 2, Math.trunc(w / 2), 3, body);
+    if (hi) { this.rect(cx - w2 + 4, cy - h2 - 2, Math.trunc(w / 2) - 2, 1, hi); this.rect(cx - w2 + 2, cy - h2 + 1, 3, 1, hi); }
+  }
+  pine(x, baseY, height, foliage, shadow, snow = 0) {
+    const trunkH = Math.max(Math.trunc(height * .25), 2);
+    this.rect(x, baseY - trunkH, 2, trunkH, 0xFF451A03);
+    const tiers = 3, tierH = Math.trunc((height - trunkH) / tiers);
+    for (let t = 0; t < tiers; t++) {
+      const tierW = (tiers - t) * 3 + 2, ty = baseY - trunkH - t * tierH;
+      this.rect(x - Math.trunc(tierW / 2) + 1, ty - tierH, tierW, tierH, foliage);
+      this.rect(x + 1, ty - tierH, Math.trunc(tierW / 2), tierH, shadow);
+      if (snow) this.rect(x - Math.trunc(tierW / 2) + 1, ty - tierH, tierW, 1, snow);
+    }
+  }
+  render(cfg, t, touchAge = null) {
+    const p = paletteFor(cfg);
+    this.buf.fill(p.skyTop);
+    this[cfg.scene](t, p, touchAge);
+  }
+
+  rainOnWindow(t, p, touchAge) {
+    this.sky(0, 46, p.skyTop, p.skyBottom);
+    for (const [bx, by, bw] of [[4,26,8],[14,22,10],[26,30,7],[35,20,11],[48,25,9],[58,28,6]]) {
+      this.rect(bx, by, bw, 46 - by, p.silhouetteTone);
+      for (let wy = by + 2; wy < 44; wy += 3) for (let wx = bx + 2; wx < bx + bw - 1; wx += 3) if ((wx * 7 + wy * 13) % 5 !== 0) this.px(wx, wy, p.accentDetail);
+    }
+    for (let i = 0; i < 24; i++) {
+      const x = I(fm(i * 13 + t * .04, G - 6) + 3), y = I(fm(t * .12 + i * 17, 40) + 4);
+      this.px(x, y, p.silhouetteTone); this.px(x, y + 1, p.silhouetteTone);
+    }
+    const lampX = 52, lampY = 32;
+    this.px(lampX, lampY, p.accentDetail); this.px(lampX - 1, lampY, p.celestialGlow); this.px(lampX + 1, lampY, p.celestialGlow);
+    this.px(lampX, lampY - 1, p.celestialGlow); this.px(lampX, lampY + 1, p.celestialGlow);
+    this.rect(0, 0, G, 46, 0x1EFFFFFF);
+    for (const [colX, speed, offset] of [[9,.035,15],[18,.045,32],[27,.025,7],[36,.05,21],[44,.03,40],[53,.04,11],[14,.06,19],[31,.032,2],[48,.055,29]]) {
+      const prog = I(fm(t * speed + offset * 10, 44)), wp = p.weatherParticle;
+      this.px(colX, prog, wp); this.px(colX + 1, prog, wp);
+      if (prog > 2) this.px(colX, prog - 1, (wp & 0x99FFFFFF) >>> 0);
+      if (prog > 5) this.px(colX, prog - 4, (wp & 0x55FFFFFF) >>> 0);
+      if (prog > 9) this.px(colX, prog - 7, (wp & 0x33FFFFFF) >>> 0);
+    }
+    for (let x = 6; x < G - 6; x++) { const h = I(sin(x * .4) * .8 + 1.2); for (let y = 45 - h; y <= 45; y++) this.px(x, y, (p.weatherParticle & 0x77FFFFFF) >>> 0); }
+    if (touchAge != null && touchAge >= 0 && touchAge <= 1200) {
+      const radius = I(touchAge / 100) % 8 + 2;
+      for (let a = 0; a < 16; a++) this.px(32 + I(cos(a * .4) * radius), 24 + I(sin(a * .4) * radius * .7), p.weatherParticle);
+    }
+    this.rect(0, 0, G, 5, p.primaryTerrain); this.rect(0, 0, 5, 46, p.primaryTerrain); this.rect(G - 5, 0, 5, 46, p.primaryTerrain);
+    this.rect(4, 4, G - 8, 1, p.secondaryTerrain); this.rect(4, 4, 1, 42, p.secondaryTerrain); this.rect(G - 5, 4, 1, 42, p.terrainHighlight);
+    this.rect(G / 2 - 2, 0, 4, 46, p.primaryTerrain); this.rect(G / 2 - 1, 0, 1, 46, p.terrainHighlight); this.rect(G / 2 + 1, 0, 1, 46, p.secondaryTerrain);
+    this.rect(G / 2 - 2, 22, 4, 3, 0xFFEAB308); this.px(G / 2 - 1, 23, 0xFFCA8A04);
+    this.rect(0, 46, G, 3, p.secondaryTerrain); this.rect(0, 49, G, 1, p.terrainHighlight); this.rect(0, 50, G, 14, p.primaryTerrain); this.rect(0, 56, G, 1, p.secondaryTerrain);
+    const mugX = 14, mugY = 53;
+    this.rect(mugX, mugY, 10, 8, 0xFFF1F5F9); this.rect(mugX + 1, mugY + 7, 8, 1, 0xFFCBD5E1); this.rect(mugX + 8, mugY + 2, 3, 4, 0xFFCBD5E1);
+    this.rect(mugX + 9, mugY + 3, 1, 2, p.primaryTerrain); this.rect(mugX + 1, mugY - 1, 8, 2, 0xFF78350F); this.rect(mugX + 2, mugY - 1, 3, 1, 0xFF9A3412);
+    const steam = t * .007;
+    for (let s = 0; s < 5; s++) { const sy = mugY - 3 - s * 2, sx = mugX + 4 + I(sin(steam + s * 1.2) * 2.2); this.px(sx, sy, 0xAAFFFFFF); this.px(sx + 1, sy, 0x55FFFFFF); }
+    const cX = 30, cY = 53;
+    this.rect(cX - 2, cY + 6, 7, 2, 0xFFCA8A04); this.rect(cX, cY + 2, 3, 5, 0xFFFEF3C7); this.px(cX + 1, cY + 1, 0xFF1E293B);
+    const flicker = Math.floor(t / 80) % 3, fX = cX + 1, fY = cY - 1 - Math.trunc(flicker / 2);
+    this.px(fX, fY, 0xFFF59E0B); this.px(fX, fY - 1, 0xFFEF4444); this.px(fX - 1, fY, 0x55FBBF24); this.px(fX + 1, fY, 0x55FBBF24);
+    const potX = 46, potY = 52;
+    this.rect(potX, potY, 10, 8, 0xFFB45309); this.rect(potX + 1, potY, 8, 1, 0xFF78350F); this.rect(potX, potY + 7, 10, 1, 0xFF78350F); this.rect(potX + 8, potY + 1, 1, 6, 0xFFD97706);
+    const sway = I(sin(t * .003) * .6);
+    this.rect(potX + 3 + sway, potY - 2, 4, 3, 0xFF059669); this.rect(potX + 2 + sway, potY - 3, 6, 2, 0xFF10B981);
+    this.px(potX + 4 + sway, potY - 4, 0xFF34D399); this.px(potX + 5 + sway, potY - 4, 0xFF6EE7B7);
+  }
+
+  sunnyHill(t, p) {
+    this.sky(0, 36, p.skyTop, p.skyBottom);
+    for (const [mx, my, mw] of [[12,18,22],[32,14,28],[52,20,20]]) {
+      for (let y = my; y < 36; y++) { const span = Math.trunc((y - my) / (36 - my) * mw); this.rect(mx - Math.trunc(span / 2), y, span, 1, p.silhouetteTone); }
+      for (let sy = my; sy < my + 4; sy++) { const span = Math.trunc((sy - my) / (36 - my) * mw); this.rect(mx - Math.trunc(span / 2), sy, span, 1, 0xFFF8FAFC); }
+    }
+    const sunX = 50, sunY = 12, pulse = I(sin(t * .003) * 1.2);
+    this.rect(sunX - 7 - pulse, sunY - 7 - pulse, 15 + pulse * 2, 15 + pulse * 2, p.celestialGlow);
+    this.rect(sunX - 4, sunY - 4, 9, 9, p.celestial); this.rect(sunX - 5, sunY - 2, 11, 5, p.celestial); this.rect(sunX - 2, sunY - 5, 5, 11, p.celestial);
+    for (let r = 0; r < 8; r++) { const a = t * .0015 + r * (PI / 4); this.px(I(sunX + cos(a) * 7.5), I(sunY + sin(a) * 7.5), p.celestial); }
+    this.cloud(I(fm(t * .012, 94) - 24), 9, 18, 6, p.cloudBody, p.cloudShadow, 0xFFFFFFFF);
+    this.cloud(I(fm(t * .008 + 48, 94) - 24), 18, 14, 5, p.cloudBody, p.cloudShadow, 0xFFFFFFFF);
+    for (let x = 0; x < G; x++) { const h = I(sin((x + 8) * .07) * 7 + 34); for (let y = Math.max(h, 0); y < G; y++) this.px(x, y, p.secondaryTerrain); }
+    const millX = 14, millY = 28;
+    this.rect(millX, millY, 5, 7, 0xFFF1F5F9); this.rect(millX + 1, millY - 2, 3, 2, 0xFF78350F);
+    for (let s = 0; s < 4; s++) { const a = t * .004 + s * (PI / 2); this.px(I(millX + 2 + cos(a) * 5), I(millY - 1 + sin(a) * 5), 0xFFE2E8F0); }
+    const windSway = I(sin(t * .004) * 1.8);
+    const hillY = x => I(cos(x * .06) * 8 + 43);
+    for (let x = 0; x < G; x++) {
+      const h = hillY(x);
+      for (let y = h; y < G; y++) this.px(x, y, p.primaryTerrain);
+      if (x % 3 === 0) this.px(x + windSway, h - 1, p.terrainHighlight);
+      if (x % 5 === 0) this.px(x - windSway, h - 2, p.terrainHighlight);
+    }
+    const posts = [22, 29, 36, 43, 50];
+    for (const fx of posts) { const fy = hillY(fx); this.rect(fx, fy - 5, 2, 6, 0xFF78350F); this.px(fx, fy - 6, 0xFFB45309); }
+    for (let i = 0; i < posts.length - 1; i++) {
+      const x1 = posts[i], x2 = posts[i + 1], y1 = hillY(x1) - 3, y2 = hillY(x2) - 3;
+      for (let rx = x1; rx < x2; rx++) this.px(rx, y1 + Math.trunc((rx - x1) / (x2 - x1) * (y2 - y1)), 0xFF9A3412);
+    }
+    for (const [fx, fy, c] of [[8,48,0xFFEF4444],[16,52,0xFFFBBF24],[25,49,0xFF818CF8],[34,53,0xFFFFFFFF],[42,51,0xFFEC4899],[55,54,0xFFF59E0B],[60,50,0xFFFFFFFF]]) {
+      this.px(fx, fy, c); this.px(fx, fy + 1, 0xFF059669); if (c === 0xFFEF4444) this.px(fx + 1, fy, 0xFFB91C1C);
+    }
+    const bt = t * .003, bx = I(28 + cos(bt) * 12), by = I(42 + sin(bt * 2) * 5);
+    if (Math.floor(t / 90) % 2 === 0) { this.px(bx - 1, by - 1, 0xFF38BDF8); this.px(bx + 1, by - 1, 0xFF38BDF8); }
+    this.px(bx, by, 0xFF1E293B);
+    for (let d = 0; d < 4; d++) this.px(I(fm(t * .015 + d * 21, G)), I(32 + sin(t * .005 + d) * 5 + d * 4), 0xBBFFFFFF);
+  }
+
+  fogOverLake(t, p) {
+    this.sky(0, 30, p.skyTop, p.skyBottom);
+    for (let x = 0; x < G; x++) { const r = I(sin(x * .08) * 4 + 20); for (let y = r; y < 30; y++) this.px(x, y, p.silhouetteTone); }
+    this.rect(0, 30, G, G - 30, p.primaryTerrain);
+    for (let ry = 32; ry < G; ry += 3) {
+      const speed = .004 + ry * .0001, shift = I(sin(t * speed + ry) * 3);
+      for (let rx = 0; rx < G; rx += 6) { this.px((rx + shift + G) % G, ry, p.secondaryTerrain); this.px((rx + shift + 1 + G) % G, ry, p.terrainHighlight); }
+    }
+    const dockY = 44, dockEnd = 28;
+    for (const q of [6, 16, 26]) { this.rect(q, dockY - 2, 3, 16, 0xFF3E2723); for (let r = 0; r < 6; r++) this.px(q + 1, dockY + 14 + r, 0xFF271C19); }
+    this.rect(0, dockY - 3, dockEnd, 4, 0xFF5D4037); this.rect(0, dockY - 4, dockEnd, 1, 0xFF8D6E63);
+    for (let gx = 4; gx < dockEnd; gx += 5) this.rect(gx, dockY - 4, 1, 4, 0xFF3E2723);
+    const lx = 26, ly = dockY - 9;
+    this.rect(lx, ly, 3, 5, 0xFFCA8A04); this.px(lx + 1, ly + 2, 0xFFFEF08A); this.px(lx - 1, ly + 2, p.celestialGlow); this.px(lx + 3, ly + 2, p.celestialGlow);
+    for (let r = 1; r <= 8; r++) this.px(lx + 1 + I(sin(t * .006 + r) * 1.5), dockY + 3 + r, p.celestialGlow);
+    const boatX = 32, boatY = dockY + 2 + I(sin(t * .003) * 1.2);
+    this.rect(boatX + 2, boatY, 14, 5, 0xFF6D4C41); this.rect(boatX, boatY - 1, 4, 4, 0xFF5D4037); this.rect(boatX + 14, boatY - 1, 3, 4, 0xFF5D4037); this.rect(boatX + 4, boatY + 1, 10, 2, 0xFF3E2723);
+    for (let ox = 0; ox < 8; ox++) this.px(boatX + 5 + ox, boatY - 1 + Math.trunc(ox / 3), 0xFFD7CCC8);
+    const f1 = I(fm(t * .015, 80) - 16);
+    this.rect(f1, 26, 42, 4, p.atmosphericGlow); this.rect(f1 + 8, 24, 26, 3, p.atmosphericGlow);
+    this.rect(I(fm(t * .009 + 36, 84) - 20), 36, 48, 5, p.atmosphericGlow);
+    this.rect(I(fm(t * .02 + 15, 90) - 25), 48, 52, 4, p.atmosphericGlow);
+  }
+
+  thunderstorm(t, p, touchAge) {
+    const cycle = Math.floor(t) % 3600;
+    const touched = touchAge != null && touchAge >= 0 && touchAge <= 250;
+    const lightning = (cycle >= 400 && cycle <= 460) || (cycle >= 520 && cycle <= 550) || touched;
+    if (lightning) this.rect(0, 0, G, G, 0xFFE0F2FE); else this.sky(0, 38, p.skyTop, p.skyBottom);
+    const shift = I(sin(t * .002) * 2);
+    this.cloud(16 + shift, 10, 28, 10, p.cloudBody, p.cloudShadow);
+    this.cloud(42 - shift, 14, 32, 12, p.cloudBody, p.cloudShadow);
+    this.cloud(30, 8, 24, 9, p.cloudBody, p.cloudShadow);
+    if (lightning) {
+      for (const [a, b] of [[[32,12],[35,20]],[[35,20],[30,28]],[[30,28],[36,38]],[[36,38],[33,50]]]) {
+        const dx = b[0] - a[0], dy = b[1] - a[1];
+        for (let step = 0; step <= dy; step++) { const lx = a[0] + Math.trunc(step / dy * dx), ly = a[1] + step; this.px(lx, ly, 0xFFFFFFFF); this.px(lx + 1, ly, 0xFF38BDF8); this.px(lx - 1, ly, 0xFF38BDF8); }
+      }
+      for (let step = 0; step <= 8; step++) this.px(35 + step, 20 + step, 0xFFFFFFFF);
+    }
+    for (let x = 0; x < 24; x++) { const h = I(44 - x * .6); for (let y = h; y < G; y++) this.px(x, y, lightning ? 0xFF0F172A : p.primaryTerrain); }
+    this.pine(12 + I(sin(t * .01) * 2.5), 36, 16, p.secondaryTerrain, p.silhouetteTone);
+    for (let i = 0; i < 36; i++) {
+      const rx = (i * 11 + I(t * .15)) % (G + 10) - 5, ry = (i * 17 + I(t * .25)) % (G - 10) + 5;
+      this.px(rx, ry, p.weatherParticle); this.px(rx - 1, ry + 3, p.weatherParticle);
+      if (ry > 50) { this.px(rx - 2, ry + 1, 0x88FFFFFF); this.px(rx + 2, ry + 1, 0x88FFFFFF); }
+    }
+  }
+
+  snowyForest(t, p) {
+    this.sky(0, 36, p.skyTop, p.skyBottom);
+    for (let tx = 2; tx < G; tx += 8) this.pine(tx, 38, 12 + (tx % 5) * 2, p.silhouetteTone, p.silhouetteTone, 0xFFF1F5F9);
+    for (let x = 0; x < G; x++) { const h = I(sin(x * .08) * 5 + 44); for (let y = h; y < G; y++) this.px(x, y, p.primaryTerrain); if (x % 3 === 0) this.px(x, h + 1, p.secondaryTerrain); }
+    const cx = 26, cy = 41;
+    this.rect(cx, cy, 16, 12, 0xFF5D4037);
+    for (let ty = cy + 2; ty < cy + 12; ty += 3) this.rect(cx, ty, 16, 1, 0xFF3E2723);
+    for (let ry = 0; ry < 7; ry++) this.rect(cx - 3 + ry, cy - ry, 22 - ry * 2, 1, 0xFFF8FAFC);
+    for (let ix = cx - 2; ix < cx + 18; ix += 3) this.px(ix, cy + 1, 0xFFE0F2FE);
+    const chimX = cx + 11, chimY = cy - 9;
+    this.rect(chimX, chimY, 3, 5, 0xFF475569);
+    for (let s = 0; s < 5; s++) { const smY = chimY - 2 - s * 3, smX = chimX + 1 + I(sin(t * .005 + s * 1.1) * 2.5); this.rect(smX - 1, smY, 3, 2, 0x88FFFFFF); }
+    const wx = cx + 3, wy = cy + 3;
+    this.rect(wx, wy, 5, 5, 0xFFF59E0B); this.rect(wx + 2, wy, 1, 5, 0xFF78350F); this.rect(wx, wy + 2, 5, 1, 0xFF78350F); this.rect(wx - 1, cy + 11, 7, 2, 0x55FDE68A);
+    for (let i = 0; i < 32; i++) {
+      const wind = I(sin(t * .003 + i) * 6), sx = (((i * 17 + I(t * .03) + wind) % G) + G) % G, sy = (i * 23 + I(t * .06)) % G;
+      if (i % 4 === 0) { this.px(sx, sy, 0xFFFFFFFF); this.px(sx + 1, sy, 0xAAFFFFFF); } else this.px(sx, sy, 0xFFE2E8F0);
+    }
+  }
+
+  driftingClouds(t, p) {
+    this.sky(0, 48, p.skyTop, p.skyBottom);
+    for (let i = 0; i < 3; i++) {
+      const cy = 8 + i * 5, cx = I(fm(t * .006 + i * 30, 90) - 20);
+      this.rect(cx, cy, 28, 1, (p.cloudBody & 0x77FFFFFF) >>> 0); this.rect(cx + 8, cy + 1, 16, 1, (p.cloudBody & 0x55FFFFFF) >>> 0);
+    }
+    for (let ray = 0; ray < 4; ray++) { const rx = 10 + ray * 14; for (let step = 0; step < 32; step++) this.px(rx + Math.trunc(step / 2), 16 + step, p.atmosphericGlow); }
+    this.cloud(I(fm(t * .015, 96) - 26), 22, 28, 9, p.cloudBody, p.cloudShadow, 0xFFFFFFFF);
+    this.cloud(I(fm(t * .01 + 45, 96) - 26), 32, 34, 11, p.cloudBody, p.cloudShadow, 0xFFFFFFFF);
+    this.cloud(I(fm(t * .025 + 18, 100) - 30), 44, 40, 12, p.secondaryTerrain, p.silhouetteTone);
+    for (let py = 28; py < 42; py++) { const span = (py - 28) * 2; this.rect(46 - span / 2, py, span, 1, p.primaryTerrain); }
+    const bx = I(fm(t * .008 * 6, 80) - 10), by = 16;
+    this.px(bx, by, p.silhouetteTone); this.px(bx - 1, by - 1, p.silhouetteTone); this.px(bx + 1, by - 1, p.silhouetteTone);
+    this.px(bx - 4, by + 2, p.silhouetteTone); this.px(bx + 4, by + 3, p.silhouetteTone);
+  }
+
+  starryNight(t, p) {
+    this.sky(0, 48, p.skyTop, p.skyBottom);
+    for (let x = 0; x < G; x++) {
+      const ay = I(sin(x * .08 + t * .002) * 4 + 14);
+      this.px(x, ay, p.atmosphericGlow); this.px(x, ay + 1, (p.atmosphericGlow & 0x77FFFFFF) >>> 0); this.px(x, ay + 2, (p.atmosphericGlow & 0x44FFFFFF) >>> 0);
+    }
+    const mx = 48, my = 14;
+    this.rect(mx - 5, my - 5, 11, 11, p.celestialGlow); this.rect(mx - 3, my - 3, 7, 7, p.celestial); this.rect(mx - 4, my - 1, 9, 3, p.celestial);
+    this.rect(mx - 1, my - 4, 6, 9, p.skyTop); this.px(mx - 2, my, 0xFFCBD5E1); this.px(mx - 1, my + 2, 0xFF94A3B8);
+    const ti = Math.floor(t);
+    for (const [sx, sy, size] of [[6,8,1],[14,18,0],[22,6,2],[31,14,1],[38,22,0],[44,8,1],[58,16,2],[9,28,1],[19,34,0],[28,26,2],[37,36,1],[54,30,0],[12,42,1],[24,44,0],[61,6,1],[3,19,2]]) {
+      const tw = (Math.floor(ti / 200) + sx * 7 + sy * 11) % 4;
+      this.px(sx, sy, [0xFFFFFFFF, 0xFFBAE6FD, 0xFFFDE68A, 0x88FFFFFF][tw]);
+      if (size === 2 && tw === 0) { this.px(sx - 1, sy, p.celestialGlow); this.px(sx + 1, sy, p.celestialGlow); this.px(sx, sy - 1, p.celestialGlow); this.px(sx, sy + 1, p.celestialGlow); }
+    }
+    const mc = ti % 4000;
+    if (mc >= 600 && mc <= 1000) {
+      const prog = (mc - 600) / 400, x = Math.trunc(prog * 45), y = Math.trunc(8 + prog * 22);
+      this.px(x, y, 0xFFFFFFFF); this.px(x - 1, y - 1, 0xFFE0F2FE); this.px(x - 2, y - 1, 0x8893C5FD); this.px(x - 3, y - 2, 0x4493C5FD);
+    }
+    for (let x = 0; x < G; x++) { const h = I(sin(x * .06) * 5 + 48); for (let y = h; y < G; y++) this.px(x, y, p.primaryTerrain); }
+    const ox = 30, oy = 46;
+    this.rect(ox, oy, 8, 6, p.silhouetteTone); this.rect(ox + 1, oy - 3, 6, 3, p.silhouetteTone); this.px(ox + 4, oy - 1, 0xFFFBBF24);
+    this.pine(8, 48, 14, p.silhouetteTone, p.silhouetteTone); this.pine(14, 50, 11, p.silhouetteTone, p.silhouetteTone); this.pine(52, 51, 13, p.silhouetteTone, p.silhouetteTone);
+  }
+
+  autumnWind(t, p) {
+    this.sky(0, 42, p.skyTop, p.skyBottom);
+    for (let x = 0; x < G; x++) { const h = I(cos(x * .07) * 6 + 44); for (let y = h; y < G; y++) this.px(x, y, p.primaryTerrain); }
+    const tx = 14, ty = 48;
+    this.rect(tx, ty - 18, 4, 18, 0xFF451A03); this.rect(tx - 4, ty - 14, 5, 2, 0xFF451A03); this.rect(tx + 3, ty - 16, 6, 2, 0xFF451A03);
+    for (const [cx, cy, sz] of [[tx - 6, ty - 24, 14], [tx + 4, ty - 26, 16], [tx - 2, ty - 30, 15], [tx + 2, ty - 20, 12]]) {
+      this.rect(cx, cy, sz, Math.trunc(sz / 2) + 3, 0xFFD97706); this.rect(cx + 2, cy - 2, sz - 4, Math.trunc(sz / 2) + 2, 0xFFDC2626); this.rect(cx + 4, cy + 2, sz - 6, Math.trunc(sz / 3), 0xFFF59E0B);
+    }
+    const bx = 26, by = 46;
+    this.rect(bx, by, 10, 2, 0xFF78350F); this.rect(bx, by - 4, 10, 1, 0xFF78350F); this.rect(bx + 1, by + 2, 1, 4, 0xFF1E293B); this.rect(bx + 8, by + 2, 1, 4, 0xFF1E293B);
+    const leaf = [0xFFEF4444, 0xFFF59E0B, 0xFFD97706];
+    for (let i = 0; i < 24; i++) {
+      const wind = I(sin(t * .006 + i) * 8), lx = I(fm(t * .05 + i * 23, G + 24) - 12);
+      const ly = clamp(18 + I(sin(t * .008 + i * 2) * 14 + i * 1.5) + wind, 4, 58);
+      this.px(lx, ly, leaf[i % 3]); this.px(lx + 1, ly, leaf[i % 3]);
+    }
+    const birdX = I(fm(t * .015, 90) - 20);
+    for (let b = 0; b < 5; b++) { const x = birdX - Math.abs(b - 2) * 3, y = 12 + b * 2; this.px(x, y, p.silhouetteTone); this.px(x - 1, y - 1, p.silhouetteTone); }
+  }
+
+  goldenSunset(t, p) {
+    this.sky(0, 36, p.skyTop, p.skyBottom);
+    const sunX = 32, sunY = 32;
+    this.rect(sunX - 9, sunY - 4, 19, 9, p.celestialGlow); this.rect(sunX - 5, sunY - 3, 11, 7, p.celestial);
+    this.rect(0, 32, G, 1, p.celestialGlow); this.rect(0, 35, G, 2, 0xFFF97316); this.rect(0, 37, G, G - 37, p.primaryTerrain);
+    for (let ry = 37; ry < 58; ry += 2) {
+      const w = Math.max(I(16 - (ry - 37) / 1.5), 2), shift = I(sin(t * .005 + ry) * 2.5), rx = sunX - Math.trunc(w / 2) + shift;
+      this.rect(rx, ry, w, 1, p.celestial); this.px(rx - 3, ry, p.celestialGlow); this.px(rx + w + 2, ry, p.celestialGlow);
+    }
+    for (let y = 34; y < G; y++) this.rect(0, y, Math.max(I((G - y) / 1.8), 0), 1, p.silhouetteTone);
+    const cyx = 8, cyy = 34;
+    this.rect(cyx, cyy - 10, 2, 10, p.silhouetteTone); this.rect(cyx - 3, cyy - 14, 8, 5, p.silhouetteTone); this.rect(cyx - 1, cyy - 17, 4, 4, p.silhouetteTone);
+    const lx = 54, ly = 34;
+    this.rect(lx, ly - 8, 3, 8, p.silhouetteTone); this.rect(lx - 1, ly - 10, 5, 2, p.silhouetteTone); this.px(lx + 1, ly - 9, 0xFFFEF08A);
+    const beam = t * .003;
+    if (cos(beam) > .2) { const dir = sin(beam) > 0 ? 1 : -1; for (let s = 1; s <= 18; s++) this.px(lx + 1 + s * dir, ly - 9 + Math.trunc(s / 4), p.celestialGlow); }
+    const bx = 40, by = 35;
+    this.rect(bx, by, 6, 2, p.silhouetteTone); this.rect(bx + 3, by - 5, 1, 5, p.silhouetteTone);
+    for (let sy = 0; sy <= 4; sy++) this.rect(bx + 1, by - 1 - sy, sy, 1, p.silhouetteTone);
+    const ti = Math.floor(t);
+    for (let f = 0; f < 6; f++) {
+      const fx = (f * 21 + I(sin(t * .003 + f) * 11) + 18) % G, fy = clamp(46 + I(cos(t * .004 + f * 2) * 5), 38, 62);
+      if ((Math.floor(ti / 140) + f * 3) % 4 !== 0) { this.px(fx, fy, p.celestial); this.px(fx + 1, fy, p.celestialGlow); }
+    }
+  }
+}
+
+function blendScenes(from, to, dest, type, prog, time) {
+  const p = clamp(prog, 0, 1);
+  if (type === "dither") { for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) { const i = y * G + x; dest[i] = p >= BAYER8[(y % 8) * 8 + (x % 8)] ? to[i] : from[i]; } }
+  else if (type === "sweep") {
+    const sweepX = p * (G + 16) - 8;
+    for (let y = 0; y < G; y++) {
+      const b = Math.trunc(sweepX) + Math.trunc(sin((y + time * .015) * .25) * 3);
+      for (let x = 0; x < G; x++) { const i = y * G + x; dest[i] = x < b - 2 ? to[i] : x <= b ? ((x + y) % 2 === 0 ? 0xFFE2E8F0 : to[i]) : from[i]; }
+    }
+  } else if (type === "cascade") {
+    for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) { const i = y * G + x; dest[i] = p >= (x + y) / (G * 2) * .8 + ((x * 5 + y * 11) % 13) / 65 ? to[i] : from[i]; }
+  } else { const a = Math.trunc(p * 255); for (let i = 0; i < G * G; i++) dest[i] = blendC(from[i], to[i], a); }
+}
+
+const TRANSITIONS = [
+  { key: "dither", name: "Bayer Dissolve" }, { key: "sweep", name: "Wind Sweep" },
+  { key: "cascade", name: "Pixel Cascade" }, { key: "fade", name: "Atmospheric Morph" },
+];
+
+/* Drives one live canvas: speed-scaled clock, taps and transitions (SceneDriver.swift). */
+class SceneDriver {
+  constructor(canvas, cfg, opts = {}) {
+    this.canvas = canvas; this.ctx = canvas.getContext("2d"); canvas.width = G; canvas.height = G;
+    this.img = this.ctx.createImageData(G, G); this.u32 = new Uint32Array(this.img.data.buffer);
+    this.cur = new SceneRenderer(); this.prev = new SceneRenderer(); this.out = new Uint32Array(G * G);
+    this.cfg = cfg; this.speed = opts.speed ?? 1; this.fps = opts.fps ?? 24;
+    this.clock = opts.clock ?? (SCENE_SHOWCASE[cfg.scene] ?? 2400); this.offset = 0; this.touchT = null;
+    this.tr = null; this.lastFrame = -1; this.visible = true; this.onFrame = null;
+    this.draw(performance.now());
+  }
+  set(cfg, type = "dither", dur = 800) {
+    const o = this.cfg;
+    if (o.scene === cfg.scene && o.style === cfg.style && o.night === cfg.night && o.phase === cfg.phase) return;
+    this.tr = (dur > 0 && !REDUCED) ? { from: o, start: performance.now(), type, dur } : null;
+    this.cfg = cfg; this.lastFrame = -1; if (REDUCED) this.draw(performance.now());
+  }
+  poke() { this.touchT = this.clock + this.offset; this.lastFrame = -1; }
+  tick(now, dt) {
+    this.clock += Math.min(dt, 250) * this.speed;
+    const f = Math.floor(now / (1000 / this.fps));
+    if (f === this.lastFrame) return; this.lastFrame = f; this.draw(now);
+  }
+  draw(now) {
+    const t = this.clock + this.offset, ta = this.touchT == null ? null : t - this.touchT;
+    this.cur.render(this.cfg, t, ta);
+    let src = this.cur.buf;
+    if (this.tr) {
+      const lin = (now - this.tr.start) / this.tr.dur;
+      if (lin >= 1) this.tr = null;
+      else { this.prev.render(this.tr.from, t, ta); blendScenes(this.prev.buf, this.cur.buf, this.out, this.tr.type, 1 - Math.pow(1 - lin, 3), t); src = this.out; }
+    }
+    const u = this.u32;
+    for (let i = 0; i < G * G; i++) { const c = src[i]; u[i] = 0xFF000000 | ((c & 255) << 16) | (c & 0xFF00) | ((c >>> 16) & 255); }
+    this.ctx.putImageData(this.img, 0, 0);
+    if (this.onFrame) this.onFrame(this);
+  }
+}
+const SCENE_SHOWCASE = { thunderstorm: 430, starryNight: 820 };
+
+/* 5x7 bitmap PixelText (SharedViews.swift glyph table) */
+const GLYPHS = {
+  A:[".###.","#...#","#...#","#####","#...#","#...#","#...#"],B:["####.","#...#","#...#","####.","#...#","#...#","####."],C:[".###.","#...#","#....","#....","#....","#...#",".###."],
+  D:["####.","#...#","#...#","#...#","#...#","#...#","####."],E:["#####","#....","#....","####.","#....","#....","#####"],F:["#####","#....","#....","####.","#....","#....","#...."],
+  G:[".###.","#...#","#....","#.###","#...#","#...#",".####"],H:["#...#","#...#","#...#","#####","#...#","#...#","#...#"],I:[".###.","..#..","..#..","..#..","..#..","..#..",".###."],
+  J:["..###","...#.","...#.","...#.","...#.","#..#.",".##.."],K:["#...#","#..#.","#.#..","##...","#.#..","#..#.","#...#"],L:["#....","#....","#....","#....","#....","#....","#####"],
+  M:["#...#","##.##","#.#.#","#.#.#","#...#","#...#","#...#"],N:["#...#","#...#","##..#","#.#.#","#..##","#...#","#...#"],O:[".###.","#...#","#...#","#...#","#...#","#...#",".###."],
+  P:["####.","#...#","#...#","####.","#....","#....","#...."],Q:[".###.","#...#","#...#","#...#","#.#.#","#..#.",".##.#"],R:["####.","#...#","#...#","####.","#.#..","#..#.","#...#"],
+  S:[".####","#....","#....",".###.","....#","....#","####."],T:["#####","..#..","..#..","..#..","..#..","..#..","..#.."],U:["#...#","#...#","#...#","#...#","#...#","#...#",".###."],
+  V:["#...#","#...#","#...#","#...#","#...#",".#.#.","..#.."],W:["#...#","#...#","#...#","#.#.#","#.#.#","#.#.#",".#.#."],X:["#...#","#...#",".#.#.","..#..",".#.#.","#...#","#...#"],
+  Y:["#...#","#...#",".#.#.","..#..","..#..","..#..","..#.."],Z:["#####","....#","...#.","..#..",".#...","#....","#####"],
+  0:[".###.","#...#","#..##","#.#.#","##..#","#...#",".###."],1:["..#..",".##..","..#..","..#..","..#..","..#..",".###."],2:[".###.","#...#","....#","...#.","..#..",".#...","#####"],
+  3:["####.","....#","....#",".###.","....#","....#","####."],4:["...#.","..##.",".#.#.","#..#.","#####","...#.","...#."],5:["#####","#....","####.","....#","....#","#...#",".###."],
+  6:[".###.","#....","#....","####.","#...#","#...#",".###."],7:["#####","....#","...#.","..#..",".#...",".#...",".#..."],8:[".###.","#...#","#...#",".###.","#...#","#...#",".###."],
+  9:[".###.","#...#","#...#",".####","....#","....#",".###."],
+  ":":[".....","..#..","..#..",".....","..#..","..#..","....."],"·":[".....",".....",".....","..#..",".....",".....","....."],
+  ".":[".....",".....",".....",".....",".....","..#..","..#.."],"-":[".....",".....",".....",".###.",".....",".....","....."],
+  "'":["..#..","..#..",".....",".....",".....",".....","....."],",":[".....",".....",".....",".....","..#..","..#..",".#..."],
+};
+function drawPixelText(canvas, text, color = "#F8FAFC", shadow = "#4C1D95") {
+  text = text.toUpperCase(); const W = Math.max(1, text.length * 6 - 1) + 1, H = 8;
+  if (canvas.width !== W) canvas.width = W; canvas.height = H;
+  const c = canvas.getContext("2d"); c.clearRect(0, 0, W, H);
+  for (const [col, dx] of [[shadow, 1], [color, 0]]) {
+    if (!col) continue; c.fillStyle = col;
+    [...text].forEach((ch, k) => { const g = GLYPHS[ch]; if (!g) return; g.forEach((row, y) => [...row].forEach((v, x) => { if (v === "#") c.fillRect(k * 6 + x + dx, y + dx, 1, 1); })); });
+  }
+}
+/* ==========================================================================
+   Page: drivers, scrollytelling, ambient backdrop, page transitions.
+   ========================================================================== */
+const hasGSAP = typeof gsap !== "undefined" && typeof ScrollTrigger !== "undefined";
+if (hasGSAP) gsap.registerPlugin(ScrollTrigger);
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+
+/* How each scene is lit on the page (night / day-cycle phase), 16-Bit by default */
+const LIGHT = { rainOnWindow: { night: true }, sunnyHill: {}, fogOverLake: { phase: "dawnTwilight" }, thunderstorm: { night: true },
+  snowyForest: {}, driftingClouds: {}, starryNight: { night: true }, autumnWind: { phase: "goldenHour" }, goldenSunset: { phase: "sunset" } };
+const cfgFor = (scene, style = "snes") => ({ scene, style, night: !!LIGHT[scene].night, phase: LIGHT[scene].phase || null });
+
+/* ---------- driver registry ---------- */
+const drivers = [];
+const io = new IntersectionObserver(es => es.forEach(e => { const d = drivers.find(d => d.canvas === e.target); if (d) d.visible = e.isIntersecting; }), { rootMargin: "120px" });
+function addDriver(canvas, cfg, opts) { const d = new SceneDriver(canvas, cfg, opts); drivers.push(d); io.observe(canvas); return d; }
+function tapToStir(el, d) {
+  const go = () => d.poke();
+  el.addEventListener("click", go);
+  el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+}
+$$("canvas[data-scene]").forEach(c => {
+  const cfg = { scene: c.dataset.scene, style: c.dataset.style || "snes", night: c.dataset.night === "1", phase: c.dataset.phase || null };
+  const d = addDriver(c, cfg, { fps: +c.dataset.fps || 24 });
+  if (c.dataset.tap) tapToStir(c.closest(".scene"), d);
+});
+$$("canvas[data-pixeltext]").forEach(c => drawPixelText(c, c.dataset.pixeltext));
+
+/* ---------- ambient backdrop: blurred live scene, crossfades on focus change ---------- */
+const bd = [$("#bdA"), $("#bdB")]; bd.forEach(c => { c.width = 64; c.height = 64; });
+let bdIdx = 0, focus = null, bdLast = -1;
+function setFocus(d) {
+  if (!d || d === focus) return;
+  focus = d; bdIdx ^= 1;
+  bd[bdIdx].getContext("2d").drawImage(d.canvas, 0, 0);
+  bd[bdIdx].classList.add("on"); bd[bdIdx ^ 1].classList.remove("on");
+}
+
+/* ---------- hero: onboarding cycle every 3.2 s with Bayer dissolve ---------- */
+const HERO = ["sunnyHill", "rainOnWindow", "snowyForest", "goldenSunset", "thunderstorm", "starryNight"];
+let heroI = 0;
+const heroD = addDriver($("#heroCanvas"), cfgFor(HERO[0]));
+tapToStir($("#heroScene"), heroD);
+function heroCaption() { $("#heroName").textContent = SCENE[HERO[heroI]].title; }
+heroCaption();
+if (!REDUCED) setInterval(() => {
+  if (!heroD.visible || document.hidden) return;
+  heroI = (heroI + 1) % HERO.length; heroD.set(cfgFor(HERO[heroI]), "dither", 800); heroCaption();
+}, 3200);
+setFocus(heroD);
+
+/* ---------- nine scenes chapter ---------- */
+const list = $("#sceneList");
+SCENES.forEach((s, i) => {
+  const li = document.createElement("li"); li.tabIndex = 0; li.setAttribute("role", "button");
+  li.innerHTML = `<span class="n">${String(i + 1).padStart(2, "0")}</span><span>${s.title}</span><span class="mood">${s.mood}</span>`;
+  li.addEventListener("click", () => jumpScene(i)); li.addEventListener("keydown", e => { if (e.key === "Enter") jumpScene(i); });
+  list.appendChild(li);
+});
+const chD = addDriver($("#chCanvas"), cfgFor(SCENES[0].key), { speed: .4 });
+tapToStir($("#chScene"), chD);
+let chI = -1, chTarget = 0;
+function showScene(i) {
+  if (i === chI) return; chI = i;
+  chD.set(cfgFor(SCENES[i].key), "dither", 700);
+  [...list.children].forEach((li, k) => li.classList.toggle("on", k === i));
+  $("#sceneCount").textContent = `${String(i + 1).padStart(2, "0")} / 09 · scroll to move time`;
+}
+showScene(0);
+let chST = null;
+function jumpScene(i) {
+  if (chST && lenis) lenis.scrollTo(chST.start + (i + .5) / 9 * (chST.end - chST.start), { duration: 1.2 });
+  else if (chST) scrollTo({ top: chST.start + (i + .5) / 9 * (chST.end - chST.start), behavior: "smooth" });
+  else showScene(i);
+}
+
+/* ---------- seven eras chapter ---------- */
+let stStyle = 0, stScene = "goldenSunset", stTr = "dither";
+const stD = addDriver($("#stCanvas"), { scene: stScene, style: STYLES[0].key, night: false, phase: null });
+const sw = $("#swatches"); ROLE_KEYS.forEach(() => sw.appendChild(document.createElement("span")));
+const hexOf = c => "#" + (c & 0xFFFFFF).toString(16).padStart(6, "0");
+const styleChips = STYLES.map((s, i) => { const b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.id = "style-" + s.key; b.textContent = s.short; b.addEventListener("click", () => jumpStyle(i)); $("#styleChips").appendChild(b); return b; });
+SCENES.forEach(s => { const b = document.createElement("button"); b.type = "button"; b.className = "chip small"; b.id = "stscene-" + s.key; b.textContent = s.short; b.setAttribute("aria-pressed", s.key === stScene);
+  b.addEventListener("click", () => { stScene = s.key; $$("#stSceneChips .chip").forEach(c => c.setAttribute("aria-pressed", c === b)); applyStyle(true); }); $("#stSceneChips").appendChild(b); });
+TRANSITIONS.forEach(t => { const b = document.createElement("button"); b.type = "button"; b.className = "chip small"; b.id = "tr-" + t.key; b.textContent = t.name; b.setAttribute("aria-pressed", t.key === stTr);
+  b.addEventListener("click", () => { stTr = t.key; $$("#trChips .chip").forEach(c => c.setAttribute("aria-pressed", c === b)); }); $("#trChips").appendChild(b); });
+function applyStyle(force) {
+  const s = STYLES[stStyle], cfg = { scene: stScene, style: s.key, night: !!LIGHT[stScene].night, phase: null };
+  stD.set(cfg, stTr, stTr === "fade" ? 900 : 800);
+  styleChips.forEach((c, i) => c.setAttribute("aria-pressed", i === stStyle));
+  $("#styleName").textContent = s.name; $("#styleSub").textContent = s.sub;
+  const pal = paletteFor(cfg);
+  [...sw.children].forEach((el, k) => { el.style.background = hexOf(pal[ROLE_KEYS[k]]); el.title = ROLE_KEYS[k]; });
+}
+function setStyle(i) { if (i === stStyle && styleChips[i].getAttribute("aria-pressed") === "true") return; stStyle = i; applyStyle(); }
+let stST = null;
+function jumpStyle(i) {
+  if (stST) { const y = stST.start + (i + .5) / 7 * (stST.end - stST.start); if (lenis) lenis.scrollTo(y, { duration: 1 }); else scrollTo({ top: y, behavior: "smooth" }); }
+  else setStyle(i);
+}
+applyStyle();
+
+/* ---------- week ---------- */
+const WEEK = ["sunnyHill", "driftingClouds", "rainOnWindow", "thunderstorm", "fogOverLake", "autumnWind", "sunnyHill"];
+WEEK.forEach((k, i) => {
+  const d = new Date(); d.setDate(d.getDate() + i);
+  const el = document.createElement("div"); el.className = "glass day" + (i === 0 ? " today" : "");
+  el.innerHTML = `<b>${i === 0 ? "Today" : d.toLocaleDateString("en-US", { weekday: "short" })}</b><div class="scene"><canvas class="px" aria-label="${SCENE[k].cond}"></canvas></div><span class="mono">${SCENE[k].short}</span>`;
+  $("#week").appendChild(el);
+  addDriver(el.querySelector("canvas"), cfgFor(k), { fps: 15, clock: 1000 + i * 2300 });
+});
+
+/* ---------- clocks ---------- */
+const clockC = $("#standbyClock");
+function updateClocks() {
+  const n = new Date(), hh = String(n.getHours()).padStart(2, "0"), mm = String(n.getMinutes()).padStart(2, "0");
+  drawPixelText(clockC, `${hh}:${mm}`, "#F87171", "#450A0A");
+  $("#lockTime").textContent = `${n.getHours() % 12 || 12}:${mm}`;
+  if (currentView === "ambient") ambText();
+}
+
+/* ---------- ambient view ---------- */
+const CITIES = [
+  { city: "Kyoto", tz: "Asia/Tokyo", scene: "autumnWind", style: "snes" },
+  { city: "Bergen", tz: "Europe/Oslo", scene: "rainOnWindow", style: "nordic" },
+  { city: "Reykjavik", tz: "Atlantic/Reykjavik", scene: "starryNight", style: "gba" },
+  { city: "Seattle", tz: "America/Los_Angeles", scene: "fogOverLake", style: "pastel" },
+  { city: "Tokyo", tz: "Asia/Tokyo", scene: "rainOnWindow", style: "neo" },
+  { city: "Zurich", tz: "Europe/Zurich", scene: "snowyForest", style: "snes" },
+  { city: "London", tz: "Europe/London", scene: "driftingClouds", style: "nes" },
+  { city: "Honolulu", tz: "Pacific/Honolulu", scene: "goldenSunset", style: "snes" },
+];
+let cityI = 0;
+const ambD = addDriver($("#ambCanvas"), cfgFor(CITIES[0].scene, CITIES[0].style), { speed: .5 });
+ambD.visible = false; tapToStir($("#ambCanvas"), ambD);
+const cityChips = CITIES.map((c, i) => { const b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.id = "city-" + i; b.textContent = c.city; b.addEventListener("click", () => setCity(i, true)); $("#cityChips").appendChild(b); return b; });
+function ambText() {
+  const c = CITIES[cityI];
+  let time = "";
+  try { time = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: c.tz }).format(new Date()); } catch { time = ""; }
+  drawPixelText($("#ambText"), `${c.city} · ${time}`, "#F8FAFC", "rgba(15,23,42,.55)");
+  $("#ambMood").textContent = `${SCENE[c.scene].cond} · ${STYLE[c.style].name}`;
+}
+let ambTimer = null;
+function setCity(i, manual) {
+  cityI = i; const c = CITIES[i];
+  ambD.set(cfgFor(c.scene, c.style), i % 2 ? "sweep" : "dither", 900);
+  cityChips.forEach((b, k) => b.setAttribute("aria-pressed", k === i)); ambText();
+  if (manual) startAmbTimer();
+}
+function startAmbTimer() { clearInterval(ambTimer); if (!REDUCED) ambTimer = setInterval(() => { if (currentView === "ambient" && !document.hidden) setCity((cityI + 1) % CITIES.length); }, 9000); }
+setCity(0);
+
+/* ---------- day-cycle sky behind everything, scrubbed by page scroll ---------- */
+const DAY = ["deepNight", "dawnTwilight", "sunrise", "goldenHour", "sunset", "duskTwilight", "deepNight"].map(k => PHASE_SKY[k].map(c => [(c >>> 16) & 255, (c >>> 8) & 255, c & 255]));
+const rootStyle = document.documentElement.style;
+function setDay(p) {
+  const f = Math.min(DAY.length - 1.0001, Math.max(0, p * (DAY.length - 1))), k = Math.floor(f), u = f - k;
+  const mixc = (a, b) => `rgb(${a.map((v, j) => Math.round(v + (b[j] - v) * u)).join(",")})`;
+  rootStyle.setProperty("--skyTop", mixc(DAY[k][0], DAY[k + 1][0])); rootStyle.setProperty("--skyBot", mixc(DAY[k][1], DAY[k + 1][1]));
+}
+setDay(0);
+
+/* ---------- smooth scroll + scroll story ---------- */
+let lenis = null;
+if (!REDUCED && hasGSAP && typeof Lenis !== "undefined") {
+  lenis = new Lenis({ duration: 1.15, easing: t => Math.min(1, 1.001 - Math.pow(2, -10 * t)) });
+  lenis.on("scroll", ScrollTrigger.update);
+  gsap.ticker.add(t => lenis.raf(t * 1000)); gsap.ticker.lagSmoothing(0);
+}
+function buildStory() {
+  if (!hasGSAP) return;
+  if (!REDUCED) {
+    gsap.to("#heroScene", { yPercent: -10, scale: .92, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });
+    gsap.to("#statement .w", { opacity: 1, stagger: .12, ease: "none", scrollTrigger: { trigger: ".statement", start: "top 78%", end: "bottom 55%", scrub: true } });
+    chST = ScrollTrigger.create({ trigger: "#scenes", start: "top top", end: "+=600%", pin: true, scrub: true,
+      onUpdate: s => { const p = s.progress; showScene(Math.min(8, Math.floor(p * 9))); chTarget = p * 9 * 4500; $("#sceneBar").style.width = (p * 100) + "%"; } });
+    stST = ScrollTrigger.create({ trigger: "#styles", start: "top top", end: "+=420%", pin: true,
+      onUpdate: s => setStyle(Math.min(6, Math.floor(s.progress * 7))) });
+    gsap.utils.toArray(".sec .glass, .widgets .wcell").forEach(el => gsap.from(el, { y: 60, duration: 1.1, ease: "expo.out", scrollTrigger: { trigger: el, start: "top 92%" } }));
+  }
+  ScrollTrigger.create({ trigger: "#view-story", start: "top top", end: "bottom bottom", onUpdate: s => setDay(s.progress) });
+  const focusOf = [["#top", heroD], ["#scenes", chD], ["#styles", stD]];
+  $$(".sec").forEach(sec => { const c = sec.querySelector("canvas[data-scene]"); if (c) focusOf.push([sec, drivers.find(d => d.canvas === c)]); });
+  focusOf.push(["#get", drivers.find(d => d.canvas === $("#get canvas"))]);
+  focusOf.forEach(([sel, d]) => ScrollTrigger.create({ trigger: sel, start: "top 55%", end: "bottom 45%", onToggle: s => { if (s.isActive && currentView === "story") setFocus(d); } }));
+}
+// split statement into words for the scrubbed reveal
+(() => { const p = $("#statement"); if (REDUCED) return; p.innerHTML = p.textContent.split(" ").map(w => `<span class="w">${w}</span>`).join(" "); })();
+buildStory();
+if (REDUCED) $$(".scene-list li").forEach(li => li.classList.add("on"));
+
+/* ---------- views + full-screen pixel transitions (Bayer dissolve in, wind sweep out) ---------- */
+const wipe = $("#wipe"), wctx = wipe.getContext("2d");
+let wc = 0, wr = 0;
+function sizeWipe() { wc = innerWidth < 600 ? 32 : 64; wr = Math.ceil(wc * innerHeight / innerWidth); wipe.width = wc; wipe.height = wr; }
+sizeWipe(); addEventListener("resize", sizeWipe);
+function paintWipe(p, mode, cover, time) {
+  wctx.clearRect(0, 0, wc, wr);
+  const sweepX = p * (wc + 16) - 8;
+  for (let y = 0; y < wr; y++) {
+    const b = Math.trunc(sweepX) + Math.trunc(Math.sin((y + time * .015) * .25) * 3);
+    for (let x = 0; x < wc; x++) {
+      let on, edge = false;
+      if (mode === "dither") { const th = BAYER8[(y % 8) * 8 + (x % 8)]; on = cover ? p >= th : p < th; edge = Math.abs(p - th) < .05; }
+      else { on = cover ? x < b - 2 : x > b; edge = x >= b - 2 && x <= b && (x + y) % 2 === 0; }
+      if (edge && p > 0 && p < 1) { wctx.fillStyle = mode === "dither" ? "#A78BFA" : "#E2E8F0"; wctx.fillRect(x, y, 1, 1); }
+      else if (on) { wctx.fillStyle = "#0F172A"; wctx.fillRect(x, y, 1, 1); }
+    }
+  }
+}
+let currentView = "story", busy = false, storyScroll = 0;
+function showView(id) {
+  if (currentView === "story") storyScroll = scrollY;
+  $$(".view").forEach(v => v.hidden = v.dataset.viewId !== id);
+  currentView = id;
+  $$(".links a").forEach(a => a.toggleAttribute("aria-current", a.dataset.view === "ambient" && id === "ambient"));
+  $$(".links a[aria-current]").forEach(a => a.setAttribute("aria-current", "page"));
+  ambD.visible = id === "ambient";
+  if (id === "ambient") { if (lenis) lenis.stop(); scrollTo(0, 0); startAmbTimer(); ambText(); setFocus(ambD); }
+  else if (id === "story") { clearInterval(ambTimer); if (lenis) lenis.start(); if (hasGSAP) ScrollTrigger.refresh(); }
+  else { clearInterval(ambTimer); if (lenis) { lenis.start(); lenis.scrollTo(0, { immediate: true }); } scrollTo(0, 0); if (hasGSAP) ScrollTrigger.refresh(); }
+}
+function scrollToTarget(sel) { const el = $(sel); if (!el) return; if (lenis) lenis.resize(), lenis.scrollTo(el, { duration: 1.6 }); else el.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth" }); }
+function go(id, target) {
+  if (busy) return;
+  if (id === currentView) { if (target) scrollToTarget(target); return; }
+  const mode = id === "story" ? "sweep" : "dither";
+  const after = () => {
+    if (id === "story") { if (target) setTimeout(() => scrollToTarget(target), 60); else { if (lenis) { lenis.resize(); lenis.scrollTo(storyScroll, { immediate: true, force: true }); } else scrollTo(0, storyScroll); } }
+  };
+  if (REDUCED || !hasGSAP) { showView(id); after(); return; }
+  busy = true; wipe.classList.add("on"); const st = { p: 0 }, t0 = performance.now();
+  gsap.timeline({ onComplete: () => { busy = false; wipe.classList.remove("on"); wctx.clearRect(0, 0, wc, wr); } })
+    .to(st, { p: 1, duration: .75, ease: "power3.out", onUpdate: () => paintWipe(st.p, mode, true, performance.now() - t0) })
+    .add(() => { showView(id); after(); st.p = 0; })
+    .to(st, { p: 1, duration: .8, ease: "power3.out", delay: .05, onUpdate: () => paintWipe(st.p, mode, false, performance.now() - t0) });
+}
+document.addEventListener("click", e => { const a = e.target.closest("a[data-view]"); if (!a) return; e.preventDefault(); go(a.dataset.view, a.dataset.target); });
+addEventListener("keydown", e => { if (e.key === "Escape" && currentView === "ambient") go("story"); });
+if (location.hash === "#ambient") showView(location.hash.slice(1));
+
+/* ---------- one clock for every scene ---------- */
+let lastNow = performance.now();
+function tick() {
+  const now = performance.now(), dt = now - lastNow; lastNow = now;
+  chD.offset += (chTarget - chD.offset) * .12; if (Math.abs(chTarget - chD.offset) > 1) chD.lastFrame = -1;
+  for (const d of drivers) if (d.visible) d.tick(now, dt);
+  const bf = Math.floor(now / 125);
+  if (focus && bf !== bdLast) { bdLast = bf; bd[bdIdx].getContext("2d").drawImage(focus.canvas, 0, 0); }
+}
+updateClocks(); setInterval(updateClocks, 15000);
+if (REDUCED) { drivers.forEach(d => d.draw(performance.now())); bd[bdIdx].getContext("2d").drawImage(focus.canvas, 0, 0); }
+else if (hasGSAP) gsap.ticker.add(tick); else (function loop() { tick(); requestAnimationFrame(loop); })();
+</script>
+
+</body>
+</html>
